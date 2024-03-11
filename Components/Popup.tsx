@@ -1,7 +1,8 @@
-// components/Popup.tsx
+// Import React for creating components
 import React from 'react';
 
 const Popup = React.forwardRef<HTMLDivElement, {}>((_, ref) => {
+ // Return a div with a class of "popup" and a style block for styling
  return (
     <div ref={ref} className="popup">
       <style jsx>{`
@@ -20,6 +21,7 @@ const Popup = React.forwardRef<HTMLDivElement, {}>((_, ref) => {
  );
 });
 
+// Set the display name for the Popup component
 Popup.displayName = 'Popup';
 
 export default Popup;

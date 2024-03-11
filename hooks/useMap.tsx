@@ -1,31 +1,39 @@
-// hooks/useMap.ts
-import { useEffect, useRef, useState } from "react";
-import Map from "ol/Map";
-import View from "ol/View";
-import TileLayer from "ol/layer/Tile";
-import OSM from "ol/source/OSM";
-import Overlay from "ol/Overlay";
-import { fromLonLat } from "ol/proj";
-import { Draw, Modify } from "ol/interaction";
-import { Vector as VectorLayer } from "ol/layer";
-import { Vector as VectorSource } from "ol/source";
-import { Polygon, Point, LineString } from "ol/geom";
-import { Style, Fill, Stroke } from "ol/style";
-import { click, pointerMove, Condition } from "ol/events/condition";
-import { platformModifierKeyOnly } from "ol/events/condition";
-import { unByKey } from "ol/Observable";
+// Import necessary tools from OpenLayers and React
+"use client" //use this to declare the component as client-side 
 import Feature from "ol/Feature";
+import Map from "ol/Map";
+import Overlay from "ol/Overlay";
+import View from "ol/View";
+import ZoomSlider from 'ol/control/ZoomSlider.js';
+import { click } from "ol/events/condition";
+import { Point, Polygon } from "ol/geom";
+import { Draw, Modify } from "ol/interaction";
+import Select from "ol/interaction/Select";
+import { Vector as VectorLayer } from "ol/layer";
+import TileLayer from "ol/layer/Tile";
+import 'ol/ol.css';
+import { fromLonLat } from "ol/proj";
+import { Vector as VectorSource } from "ol/source";
+import OSM from "ol/source/OSM";
+import { Style } from "ol/style";
 import Icon from "ol/style/Icon";
+import { useEffect, useRef, useState } from "react";
+import Rotate from 'ol/control/Rotate.js';
 
+// This hook sets up and manages the map
 const useMap = () => {
+   // These are references to HTML elements that will be used in the map
   const mapRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [drawingSource] = useState(new VectorSource());
+   //create a layer to display the drawing features
   const [drawingLayer] = useState(new VectorLayer({ source: drawingSource }));
-  const [popupContent, setPopupContent] = useState<string | null>(null);
-  const popup = useRef<Overlay | null>(null);
+  const [popupContent, setPopupContent] = useState<string | null>(null);   // This state holds the content to be shown in the popup
+  const popup = useRef<Overlay | null>(null);   // This is a reference to the popup overlay
 
+ // This effect runs once when the component mounts
   useEffect(() => {
+    //check if the map and popup elements are available
     if (!mapRef.current || !popupRef.current) return;
     const raster = new TileLayer({
       source: new OSM(),
@@ -36,14 +44,16 @@ const useMap = () => {
     });
     const map = new Map({
       target: mapRef.current,
-      layers: [raster, vector,drawingLayer,
-      ],
+      layers: [raster, vector, drawingLayer],
       view: new View({
         center: fromLonLat([0, 0]),
         zoom: 2,
-      }),
+      })
     });
-
+    //add controls to the map
+    map.addControl(new ZoomSlider());
+    map.addControl(new Rotate());
+    //set up the popup overlay
     popup.current = new Overlay({
       element: popupRef.current,
       positioning: "bottom-center",
@@ -52,11 +62,12 @@ const useMap = () => {
     });
 
     map.addOverlay(popup.current);
-
+    //add interactions for drawing and modifying features
     const modify = new Modify({ source: drawingSource });
     map.addInteraction(modify);
 
     const typeSelect = document.getElementById("type") as HTMLSelectElement;
+     //set up the drawing interaction based on user selection
     let draw: Draw | undefined;
     function addInteraction() {
       const value = typeSelect?.value;
@@ -83,36 +94,62 @@ const useMap = () => {
       });
     }
     addInteraction();
-
+    //handle clicks on the map to add markers or show coordinates in a popup
     map.on("click", (event) => {
       const clickedCoordinates = event.coordinate;
-        addMarker(clickedCoordinates, '');
-        const feature = map.forEachFeatureAtPixel(event.pixel, (feat) => feat);
-        if (feature) {
-          const coordinates = event.coordinate;
-          popup.current?.setPosition(coordinates);
-          if (popupRef.current) {
-            popupRef.current.innerHTML = 
-            `<p>Coordinates: </br>
+      addMarker(clickedCoordinates, "");
+      const feature = map.forEachFeatureAtPixel(event.pixel, (feat) => feat);
+      if (feature) {
+        const coordinates = event.coordinate;
+        popup.current?.setPosition(coordinates);
+        if (popupRef.current) {
+          popupRef.current.innerHTML = `<p>Coordinates: </br>
             <p> ${coordinates} </p>`;
-          }
-        } else {
-          popup.current?.setPosition(undefined);
-          if (popupRef.current) {
-            popupRef.current.innerHTML = "";
-          }
+        }
+      } else {
+        popup.current?.setPosition(undefined);
+        if (popupRef.current) {
+          popupRef.current.innerHTML = "";
+        }
       }
     });
+    const select = new Select({
+      layers: [drawingLayer],
+      condition: click,
+    });
+    map.addInteraction(select);
 
+    // Select event for calculating area (incomplete as of now)
+    select.on("select", (event) => {
+      const selectedFeatures = event.selected;
+      if (selectedFeatures.length > 0) {
+        const feature = selectedFeatures[0];
+        const geometry = feature.getGeometry();
+        console.log(geometry?.getType());
+        if (geometry instanceof Polygon) {
+          const area = geometry.getArea();
+          popup.current?.setPosition(
+            geometry.getInteriorPoint().getCoordinates()
+          );
+          popupRef.current!.innerHTML = `<p>Area: ${area.toFixed(
+            2
+          )} sq. units</p>`;
+        } else {
+          console.log("Selected feature is not a polygon.");
+        }
+      }
+    });
+    //clean up when the component unmounts
     return () => {
       map.dispose();
     };
-  }, []); // Add isDrawing to the dependency array to re-run the effect when it changes
+  }, []); // This effect runs once on mount
 
+// This function adds a marker to the map at the given coordinates
   const addMarker = (coordinates: number[], data: string) => {
     const iconFeature = new Feature({
       geometry: new Point(coordinates),
-      source: drawingSource
+      source: drawingSource,
     });
 
     const iconStyle = new Style({
@@ -126,18 +163,14 @@ const useMap = () => {
 
     iconFeature.setStyle(iconStyle);
     drawingSource.addFeature(iconFeature);
-
-    
   };
 
-
+  //return the necessary tools and references for the map component
   return {
     mapRef,
     popupRef,
-    addMarker
-    
-    
+    addMarker,
   };
 };
-
+//export the useMap hook so it can be used in other components
 export default useMap;
